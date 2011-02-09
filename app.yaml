@@ -1,0 +1,13 @@
+application: era-appengine
+version: 1
+runtime: python
+api_version: 1
+
+handlers:
+
+- url: /config
+  script: config_db.py
+  login: admin    
+
+- url: .*
+  script: main.py

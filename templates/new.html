@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block main %}
+
+<div>Your review URL is: {{ url }}/review/{{ review.key().id() }}. Please save it in a safe place, as it will be necessary to keep this URL to access your review in the future.</div>
+
+<div><a href = "review/{{ review.key().id() }}/screen/1">Proceed to first screen</a></div>
+
+{% end %}

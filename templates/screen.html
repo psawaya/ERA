@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block main %}
+
+<form name="eraform" method="POST" action="/review/{{ reviewID }}/screen/{{ nthScreen }}">
+
+{% for prompt in prompts %}
+
+    <input type="hidden" name="prompts[]" value="{{prompt.key().id()}}"/>
+
+    <div class="prompt">
+        <div>
+            {{ prompt.promptText }}
+        </div>
+    
+    {% if prompt.promptType == 'checkbox' %}
+        
+        {% for checkbox in prompt.getOptions() %}
+
+            <div>
+                <input type="checkbox" name="option{{checkbox.key().id()}}"/>{{ checkbox.text }}
+            </div>
+
+        {% end %}
+        
+    {% end %}
+    
+    {% if prompt.promptType == 'textarea' %}
+    
+        <textarea name="{{prompt.key().id()}}"></textarea>
+    
+    {% end %}
+    
+    {% if prompt.promptType == 'input' %}
+    
+        <input name="{{prompt.key().id()}}"/>
+        
+    {% end %}
+    
+    </div>
+
+{% end %}
+
+
+    <input type="submit" value="Next">
+
+
+</form>
+
+{% if nthScreen > 1 %}
+
+    <div>
+        <a href="/review/{{ reviewID }}/screen/{{ nthScreen-1 }}">Previous</a>
+    </div>
+
+{% end %}
+
+{% end %}
