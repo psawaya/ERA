@@ -2,7 +2,7 @@
 
 {% block main %}
 
-<form name="eraform" method="POST" action="/review/{{ reviewID }}/screen/{{ nthScreen }}">
+<form name="eraform" method="POST" action="/review/{{ review.key().id() }}/screen/{{ nthScreen }}">
 
 {% for prompt in prompts %}
 
@@ -16,9 +16,14 @@
     {% if prompt.promptType == 'checkbox' %}
         
         {% for checkbox in prompt.getOptions() %}
-
+            
+            <input type="hidden" name="options[]" value="{{checkbox.key().id()}}"/>
             <div>
-                <input type="checkbox" name="option{{checkbox.key().id()}}"/>{{ checkbox.text }}
+                <input type="checkbox" 
+                {% if PromptResponse.getForCheckbox(review,checkbox) %}
+                    checked = "true"
+                {% end %}
+                name="option{{checkbox.key().id()}}"/>{{ checkbox.text }}
             </div>
 
         {% end %}
@@ -27,13 +32,13 @@
     
     {% if prompt.promptType == 'textarea' %}
     
-        <textarea name="{{prompt.key().id()}}"></textarea>
+        <textarea name="{{prompt.key().id()}}">{{ PromptResponse.getForTextPrompt(review,prompt) }}</textarea>
     
     {% end %}
     
     {% if prompt.promptType == 'input' %}
     
-        <input name="{{prompt.key().id()}}"/>
+        <input name="{{prompt.key().id()}}" value="{{ PromptResponse.getForTextPrompt(review,prompt) }}"/>
         
     {% end %}
     
@@ -50,7 +55,7 @@
 {% if nthScreen > 1 %}
 
     <div>
-        <a href="/review/{{ reviewID }}/screen/{{ nthScreen-1 }}">Previous</a>
+        <a href="/review/{{ review.key().id() }}/screen/{{ nthScreen-1 }}">Previous</a>
     </div>
 
 {% end %}

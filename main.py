@@ -33,16 +33,13 @@ class Review(db.Model):
     # that sets a flag, we can keep track of any other prompts
     # that may have also set that flag, and not wrongly unset it.
 
+    # Flags set is a list of strs, of the form
+    # "<promptID>,<optionID>,flagName"
+
     flagsSet = db.ListProperty(str)
-    
-    @classmethod
-    def getFlagsByID(reviewID):
-        reviewObj = Review.get_by_id(reviewID)
-        if reviewObj is None:
-            raise BadReviewIDException(reviewID)
-        return reviewObj.flagsSet
+
     def getSetFlagNames(self):
-        return map(lambda x: x[1],self.flagsSet)
+        return map(lambda x: x[2],self.flagsSet)
     def getPromptsToShow(self,screen):
         p = Prompt.all()
         p.filter("screen =",screen)
@@ -55,23 +52,23 @@ class Review(db.Model):
     def unsetFlagsByPrompt(self,prompt):
         for x in self.flagsSet:
             promptID = prompt.key().id()
-            if x[0] == promptID:
-                self.flagsSet.remove(promptID)                
+            if self.getFlagSetTuple(x)[0] == promptID:
+                self.flagsSet.remove(x)                
     def unsetFlagForPromptOption(self,option,flag):
-        flagTuple = [option,prompt.key().id(),option.key().id(),flag]
-        if flagTuple in self.flagsSet:
-            self.flagsSet.remove(flagTuple)
+        flagSetStr = self.getFlagSetStr()
+        if flagSetStr in self.flagsSet:
+            self.flagsSet.remove(flagSetStr)
     def setFlagForPromptOption(self,option,flag):
-        flagTuple = [option.prompt.key().id(),option.key().id(),flag]
-        if flagTuple not in self.flagsSet:
-            self.flagsSet.append(flagTuple)
-
-# Flags set is a list of lists, of the form
-# (<promptID>,<optionID>,flagName)
-class SetFlag(db.Model):
-    review = db.ReferenceProperty(Review)
-    prompt = db.ReferenceProperty(Prompt)
-    flagname = db.StringProperty()
+        flagSetStr = self.getFlagSetStr(option,flag)
+        if flagSetStr not in self.flagsSet:
+            self.flagsSet.append(flagSetStr)
+    @staticmethod
+    def getFlagSetTuple(flagSetStr):
+        flagSet = flagSetStr.split(',')
+        return (int(flagSet[0]), int(flagSet[1]), flagSet[2])
+    @staticmethod
+    def getFlagSetStr(option,flagStr):
+        return "%s,%s,%s" % (option.prompt.key().id(),option.key().id(),flagStr)
 
 class PromptResponse(db.Model):
     created = db.DateTimeProperty()
@@ -88,12 +85,35 @@ class PromptResponse(db.Model):
         if prompt is None:
             # Must be an option
             self.option = option
+            self.prompt = option.prompt
             self.optionValue = value
         else:
             self.prompt = prompt
             if prompt.promptType == 'textarea' or prompt.promptType == 'input':
                 self.text = value
         self.put()
+    @classmethod
+    def getForTextPrompt(cls,review,prompt):
+        a = cls.all()
+        a.filter ('review =',review)
+        a.filter ('prompt =',prompt)
+        result = a.get()
+        
+        if result is not None:
+            return result.text
+        
+        return ""
+    @classmethod
+    def getForCheckbox(cls,review,option):
+        a = cls.all()
+        a.filter ('review =',review)
+        a.filter('option =',option)
+        result = a.get()
+        
+        if result is not None:
+            return result.optionValue
+        
+        return ""
 
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
@@ -109,7 +129,8 @@ class NewReviewHandler(tornado.web.RequestHandler):
 class ScreenHandler(tornado.web.RequestHandler):
     def get(self,reviewID,nthScreen):
         #TODO: redirect to next screen if there are no prompts to show for this one
-        return self.renderOrRedirectNextScreen(reviewID,nthScreen)
+        review = Review.get_by_id(long(reviewID))
+        return self.renderOrRedirectNextScreen(review,long(nthScreen))
     
     # Handles form response
     def post(self,reviewID,nthScreen):        
@@ -133,31 +154,36 @@ class ScreenHandler(tornado.web.RequestHandler):
                 # Or, create one if it doesn't already exist
 
                 response = PromptResponse.get_or_insert("%s_%s" % (promptID,reviewID))
+                response.review = review
                 response.assignValue(self.request.arguments[promptID][0],prompt)
 
-        for optionID in self.request.arguments:
-            # Special postvar that holds prompt IDs, already used it
-            if optionID == 'prompts[]': continue
-
-            if optionID[:6] == 'option':
-                optionValue = self.request.arguments[optionID][0] == 'on'
-                
-                option = Option.get_by_id(int(optionID[6:]))
-                response.assignValue(optionValue,None,option)
-                
-                for flag in option.flagsSet:
-                    review.setFlagForPromptOption(option,flag)
+        for optionID in self.request.arguments.get('options[]') or []:
+            # Each option value is a form element named 'option+<option ID>'
+            optionValue = self.request.arguments.get("option" + optionID) == ['on']
+            
+            option = Option.get_by_id(int(optionID))
+            response = PromptResponse.get_or_insert("%s_%s" % (option.key().id(),reviewID))
+            response.review = review
+            response.assignValue(optionValue,None,option)
+            
+            for flag in option.flagsSet:
+                review.setFlagForPromptOption(option,flag)
 
         review.put()
 
-        return self.renderOrRedirectNextScreen(reviewID,nthScreen)
+        return self.renderOrRedirectNextScreen(review,long(nthScreen)+1)
     @classmethod
-    def getPromptsForNthScreen(cls,reviewID,nthScreen):
-        return Review.get_by_id(long(reviewID)).getPromptsToShow(Screen.getNthActiveScreen(long(nthScreen)))
-    def renderOrRedirectNextScreen(self,reviewID,nthScreen):
-        promptsObj = ScreenHandler.getPromptsForNthScreen(reviewID,nthScreen)
+    def getPromptsForNthScreen(cls,review,screen):
+        return review.getPromptsToShow(screen)
+    def renderOrRedirectNextScreen(self,review,nthScreen):
+        screen = Screen.getNthActiveScreen(nthScreen)
+        
+        if screen is not None:
+            promptsObj = ScreenHandler.getPromptsForNthScreen(review,screen)
 
-        return self.render("templates/screen.html",prompts=promptsObj,reviewID=long(reviewID),nthScreen=long(nthScreen))
+            return self.render("templates/screen.html",prompts=promptsObj,review=review,nthScreen=long(nthScreen),PromptResponse=PromptResponse)
+        
+        return self.render("templates/done.html")
 
 class ReviewRedirectHandler(tornado.web.RequestHandler):
     def get(self,reviewID):

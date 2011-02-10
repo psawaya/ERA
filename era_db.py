@@ -47,10 +47,9 @@ class Screen(db.Model):
     @classmethod
     def getNthActiveScreen(cls,nth):
         screens = cls.all()
-        
         screens.filter('active =',True)
         screens.filter('nth =',nth)
-        return screens.fetch(1)[0]
+        return screens.get()
 
 class Prompt(db.Model):
     screen = db.ReferenceProperty(Screen)
@@ -91,7 +90,7 @@ class Prompt(db.Model):
         for flag in flags:
             if flag in self.unlessFlags:
                 return False
-            if len(self.onlyFlags > 0) and flag not in self.onlyFlags:
+            if len(self.onlyFlags) > 0 and flag not in self.onlyFlags:
                 return False
         return True
     def getOptions(self):
